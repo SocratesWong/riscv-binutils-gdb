@@ -1,5 +1,5 @@
 # This shell script emits a C file. -*- C -*-
-# Copyright (C) 2002-2020 Free Software Foundation, Inc.
+# Copyright (C) 2002-2021 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
 #
@@ -32,13 +32,15 @@ fragment <<EOF
 
 static asection *ppc_add_stub_section (const char *, asection *);
 static void ppc_layout_sections_again (void);
+static void ppc_edit (void);
 
 static struct ppc64_elf_params params = { NULL,
 					  &ppc_add_stub_section,
 					  &ppc_layout_sections_again,
+					  &ppc_edit,
 					  1, -1, -1, 0,
 					  ${DEFAULT_PLT_STATIC_CHAIN-0}, -1, 5,
-					  -1, -1, 0, -1, -1, 0};
+					  -1, -1, 0, 0, -1, -1, 0};
 
 /* Fake input file for stubs.  */
 static lang_input_statement_type *stub_file;
@@ -294,7 +296,19 @@ ppc_before_allocation (void)
 	    einfo (_("%X%P: inline PLT: %E\n"));
 	}
 
-      if (ppc64_elf_tls_setup (&link_info)
+      if (!ppc64_elf_tls_setup (&link_info))
+	einfo (_("%X%P: TLS problem %E\n"));
+    }
+
+  gld${EMULATION_NAME}_before_allocation ();
+}
+
+static void
+ppc_edit (void)
+{
+  if (stub_file != NULL)
+    {
+      if (elf_hash_table (&link_info)->tls_sec != NULL
 	  && !no_tls_opt)
 	{
 	  /* Size the sections.  This is premature, but we want to know the
@@ -323,8 +337,6 @@ ppc_before_allocation (void)
 	    sort_toc_sections (&toc_os->children, NULL, NULL);
 	}
     }
-
-  gld${EMULATION_NAME}_before_allocation ();
 }
 
 struct hook_stub_info
@@ -776,6 +788,9 @@ PARSE_AND_LIST_OPTIONS=${PARSE_AND_LIST_OPTIONS}'
   --power10-stubs [=auto]     Use Power10 PLT call stubs (default auto)\n"
 		   ));
   fprintf (file, _("\
+  --no-pcrel-optimize         Don'\''t perform R_PPC64_PCREL_OPT optimization\n"
+		   ));
+  fprintf (file, _("\
   --no-power10-stubs          Don'\''t use Power10 PLT call stubs\n"
 		   ));
   fprintf (file, _("\
@@ -909,6 +924,10 @@ PARSE_AND_LIST_ARGS_CASES=${PARSE_AND_LIST_ARGS_CASES}'
       params.power10_stubs = 0;
       break;
 
+    case OPTION_NO_PCREL_OPT:
+      params.no_pcrel_opt = 1;
+      break;
+
     case OPTION_STUBSYMS:
       params.emit_stub_syms = 1;
       break;
@@ -985,6 +1004,7 @@ PARSE_AND_LIST_ARGS_CASES=${PARSE_AND_LIST_ARGS_CASES}'
       params.no_multi_toc = 1;
       no_toc_sort = 1;
       params.plt_static_chain = 1;
+      params.no_pcrel_opt = 1;
       return FALSE;
 '
 
